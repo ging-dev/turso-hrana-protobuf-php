@@ -1,0 +1,26 @@
+{
+    "name": "gingdev/turso-hrana-php",
+    "description": "Turso Hrana protocol implements",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Gingdev\\TursoHranaPHP\\": "src/"
+        },
+        "classmap": ["./build"]
+    },
+    "authors": [
+        {
+            "name": "ging-dev",
+            "email": "thanh1101dev@gmail.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "google/protobuf": "^4.28",
+        "amphp/websocket-client": "^2.0"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^1.12"
+    }
+}
