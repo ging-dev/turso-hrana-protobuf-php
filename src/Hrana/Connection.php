@@ -6,6 +6,8 @@ use Amp\Cancellation;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Queue;
 use Amp\Websocket\WebsocketClient;
+use Amp\Websocket\WebsocketClosedException;
+use Gingdev\TursoHranaPHP\LibSQLException;
 use Hrana\Ws\ClientMsg;
 use Hrana\Ws\ServerMsg;
 use Revolt\EventLoop;
@@ -31,7 +33,13 @@ class Connection
 
     public function send(ClientMsg $message): void
     {
-        $this->client->sendBinary($message->serializeToString());
+        try {
+            $this->client->sendBinary($message->serializeToString());
+        } catch (WebsocketClosedException $e) {
+        }
+        if ($this->client->isClosed()) {
+            throw new LibSQLException('The connection is already closed.');
+        }
     }
 
     public function receive(?Cancellation $cancellation = null): ?ServerMsg

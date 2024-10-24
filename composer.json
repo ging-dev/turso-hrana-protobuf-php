@@ -1,5 +1,6 @@
 {
     "name": "gingdev/turso-hrana-php",
+    "version": "1.0.2",
     "description": "Turso Hrana protocol implements",
     "type": "library",
     "license": "MIT",

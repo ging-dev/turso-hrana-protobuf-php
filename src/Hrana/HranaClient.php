@@ -7,6 +7,7 @@ use Amp\DeferredFuture;
 use Amp\Future;
 use Gingdev\TursoHranaPHP\LibSQLException;
 use Gingdev\TursoHranaPHP\Util\IDPool;
+use Hrana\StmtResult;
 use Hrana\Ws\ClientMsg;
 use Hrana\Ws\OpenStreamReq;
 use Hrana\Ws\RequestMsg;
@@ -15,30 +16,23 @@ use Revolt\EventLoop;
 class HranaClient
 {
     /**
-     * @param array<int, DeferredFuture<mixed>> $deferreds
+     * @param array<int, DeferredFuture<StmtResult|null>> $deferreds
      */
     private function __construct(
         private Connection $connection,
         private array $deferreds = [],
-        private IDPool $requestIdPool = new IDPool(),
-        private IDPool $streamIdPool = new IDPool(),
+        private IDPool $rpool = new IDPool(),
+        private IDPool $spool = new IDPool(),
     ) {
         EventLoop::queue(function (): void {
-            while ($serverMsg = $this->connection->receive()) {
-                if ($serverMsg->hasResponseOk()) {
-                    $id = $serverMsg->getResponseOk()->getRequestId();
-                    $this->deferreds[$id]->complete(
-                        $serverMsg->getResponseOk()->getExecute()?->getResult()
-                    );
+            while ($message = $this->connection->receive()) {
+                if ($message->hasResponseOk()) {
+                    $id = $message->getResponseOk()->getRequestId();
+                    $this->deferreds[$id]->complete($message->getResponseOk()->getExecute()?->getResult());
                 }
-                if ($serverMsg->hasResponseError()) {
-                    $id = $serverMsg->getResponseError()->getRequestId();
-                    $this->deferreds[$id]->error(
-                        new LibSQLException(
-                            $serverMsg->getResponseError()->getError()
-                                ->getMessage()
-                        )
-                    );
+                if ($message->hasResponseError()) {
+                    $id = $message->getResponseError()->getRequestId();
+                    $this->deferreds[$id]->error(new LibSQLException($message->getResponseError()->getError()->getMessage()));
                 }
             }
         });
@@ -56,34 +50,24 @@ class HranaClient
 
     public function openStream(): HranaStream
     {
-        $openStreamReq = (new OpenStreamReq())
-            ->setStreamId($id = $this->streamIdPool->acquire())
-        ;
-        $requestMsg = (new RequestMsg())
-            ->setOpenStream($openStreamReq)
-        ;
-        $this->sendRequest($requestMsg);
+        $openStreamReq = (new OpenStreamReq())->setStreamId($id = $this->spool->acquire());
+        $this->sendRequest((new RequestMsg())->setOpenStream($openStreamReq));
 
         return new HranaStream($this, $id);
     }
 
     /**
-     * @return Future<mixed>
+     * @return Future<StmtResult|null>
      */
-    public function sendRequest(RequestMsg $requestMsg): Future
+    public function sendRequest(RequestMsg $request): Future
     {
-        $requestMsg->setRequestId($id = $this->requestIdPool->acquire());
-        $clientMsg = (new ClientMsg())
-            ->setRequest($requestMsg)
-        ;
-        $this->connection->send($clientMsg);
+        $request->setRequestId($id = $this->rpool->acquire());
+        $this->connection->send((new ClientMsg())->setRequest($request));
         $this->deferreds[$id] = $deferred = new DeferredFuture();
-        $deferred->getFuture()->finally(function () use ($requestMsg): void {
-            $this->requestIdPool->release($requestMsg->getRequestId());
-            if ($requestMsg->hasCloseStream()) {
-                $this->streamIdPool->release(
-                    $requestMsg->getCloseStream()->getStreamId()
-                );
+        $deferred->getFuture()->finally(function () use ($request): void {
+            $this->rpool->release($request->getRequestId());
+            if ($request->hasCloseStream()) {
+                $this->spool->release($request->getCloseStream()->getStreamId());
             }
         });
 

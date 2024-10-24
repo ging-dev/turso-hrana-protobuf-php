@@ -3,6 +3,7 @@
 namespace Gingdev\TursoHranaPHP\Hrana;
 
 use Amp\Future;
+use Gingdev\TursoHranaPHP\LibSQLException;
 use Hrana\Stmt;
 use Hrana\StmtResult;
 use Hrana\Ws\CloseStreamReq;
@@ -14,6 +15,7 @@ class HranaStream
     public function __construct(
         private HranaClient $connection,
         private int $id,
+        private bool $isClosed = false,
     ) {
     }
 
@@ -22,26 +24,25 @@ class HranaStream
      */
     public function execute(Stmt $stmt): Future
     {
-        $executeReq = (new ExecuteReq())
-            ->setStmt($stmt)
-            ->setStreamId($this->id)
-        ;
-        $requestMsg = (new RequestMsg())
-            ->setExecute($executeReq)
-        ;
+        $this->throwIfClosed();
+        $executeReq = (new ExecuteReq())->setStmt($stmt)->setStreamId($this->id);
 
-        return $this->connection->sendRequest($requestMsg);
+        return $this->connection->sendRequest((new RequestMsg())->setExecute($executeReq));
     }
 
     public function close(): void
     {
-        $closeStreamReq = (new CloseStreamReq())
-            ->setStreamId($this->id)
-        ;
-        $requestMsg = (new RequestMsg())
-            ->setCloseStream($closeStreamReq)
-        ;
-        $this->connection->sendRequest($requestMsg)->await();
+        $this->throwIfClosed();
+        $closeStreamReq = (new CloseStreamReq())->setStreamId($this->id);
+        $this->connection->sendRequest((new RequestMsg())->setCloseStream($closeStreamReq))->await();
         unset($this->connection, $this->id);
+        $this->isClosed = true;
+    }
+
+    private function throwIfClosed(): void
+    {
+        if ($this->isClosed) {
+            throw new LibSQLException(sprintf('The stream #%d is already closed.', $this->id));
+        }
     }
 }
